@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-mwDpKETuDe5C/a2O2bngGp4VuKPgzcYs1OpzCthRxGA=' 'sha256-GK45n4EYK8nekW6cd7GV3yDMWNby1VpisIWimfG/F4A=' 'sha256-u/u5mf2JSAf7tT+kNO8AcmC/zokNM4ZWU23CnHh+82c=' 'sha256-M6oCunVfhw1JJlpeDscnVFTxdYhd3L/RPod2eGk8YgQ=' 'sha256-TeHnb+EV5oE7On07S/ZLMIlXU+P9SM/YppxjKHOQjKA=' 'sha256-1Obx046LHWp27nYnrtjtOrfDuLtFuNkWVodNfI3vCMg='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://raw.githubusercontent.com https://api.github.com; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-mwDpKETuDe5C/a2O2bngGp4VuKPgzcYs1OpzCthRxGA=' 'sha256-GK45n4EYK8nekW6cd7GV3yDMWNby1VpisIWimfG/F4A=' 'sha256-u/u5mf2JSAf7tT+kNO8AcmC/zokNM4ZWU23CnHh+82c=' 'sha256-M6oCunVfhw1JJlpeDscnVFTxdYhd3L/RPod2eGk8YgQ=' 'sha256-TeHnb+EV5oE7On07S/ZLMIlXU+P9SM/YppxjKHOQjKA=' 'sha256-TsOTn3bdpQikZ36D2zwola1lBl7PvVJVRDxx1YPHBpw='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://raw.githubusercontent.com https://api.github.com; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#14111a">
@@ -4179,7 +4179,9 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
     'radial-gradient(120% 90% at 50% 100%, #a84a5a 0%, #3a1238 55%, #12060f 100%)',
   ];
   const EL_NAME = { fire: '炎', ice: '氷', thunder: '雷', none: '無' };
-  const GEM_SRC = { fire: '火トカゲや炎竜の子など', ice: '氷の狼や雪原の敵', thunder: '牙の宝箱やガーゴイルなど' };
+  // where each gem drops (names follow the enemies' current names, which the design workshop can change)
+  const stageName = (st) => (EN.ENEMIES[st - 1] ? EN.ENEMIES[st - 1].name : '');
+  const GEM_SRC = { fire: () => `${stageName(2)}や${stageName(5)}など`, ice: () => `${stageName(4)}やエリア3の敵`, thunder: () => `${stageName(9)}や${stageName(10)}など` };
 
   // ---------- small glyphs ----------
   const crystal = (fill) =>
@@ -4203,23 +4205,46 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
     if (!u) { u = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg); uriCache.set(svg, u); }
     return u;
   }
-  // Custom designs made in the design workshop. They live in one shared db document,
-  // so every player sees them; only people who can edit the artifact can change them.
+  // Custom designs made in the design workshop, seen by every player; only editors can change them.
+  // Claude version: one shared db document and uploaded assets. GitHub version: content/design.json and design/*.png
+  // of the data repository (written with the teacher's token, read by everyone from raw.githubusercontent.com).
   const DESIGN_DOC = 'data/design';
-  const DZ = { forms: {}, applied: '', uri: new Map(), comp: new Map(), seq: 0, db: null, assets: null, downloads: null,
-    canEdit: false, busy: false, editing: null, defaultEnemyNames: {} };
+  const DZ = { forms: {}, applied: '', comp: new Map(), db: null, assets: null, downloads: null,
+    canEdit: false, busy: false, editing: null, defaultEnemyNames: {},
+    fallback: new Map(), // Claude version: custom picture address -> built-in art, shown if the picture cannot be loaded
+    pics: new Map(),     // GitHub version: picture file -> checked copy in memory (blob:), a pending check, or a recent failure
+    localImg: new Map() }; // GitHub version: a picture just uploaded from this device, shown until the site has caught up
   EN.ENEMIES.forEach((e) => { DZ.defaultEnemyNames[e.id] = e.name; });
   const formKey = (slot, lv, line) => {
     const t = EN.tierOf(lv);
     return `${slot}:${t}:${slot === 'bag' || t < 4 ? 'none' : line || 'none'}`;
   };
-  function gearURI(slot, lv, line) {
-    const c = DZ.uri.get(formKey(slot, lv, line) + '|' + (lv % 3));
-    if (c) return c;
+  const formSig = (key, o) => `${key}|${o.asset || o.img}|${o.frame !== false}`;
+  const defaultGearURI = (slot, lv, line) => {
     const el = slot === 'bag' || lv < EN.GEM_MIN_LV ? 'none' : line || 'none';
     return toURI(ART.gear[`${slot}:${lv}:${el}`]);
+  };
+  // A custom gear picture is drawn into its frame the first time it is needed; until then the built-in art is shown
+  // and swapped in place when the drawing is ready (so a phone never prepares pictures it does not show).
+  function gearURI(slot, lv, line) {
+    const key = formKey(slot, lv, line), o = DZ.forms[key];
+    if (o && (o.asset || o.img)) {
+      const c = DZ.comp.get(formSig(key, o));
+      if (Array.isArray(c)) return c[lv % 3];
+      ensureForm(key);
+    }
+    return defaultGearURI(slot, lv, line);
   }
-  const enemyURI = (id) => { const o = DZ.forms['enemy:' + id]; return o && o.asset ? '/_blob/' + o.asset : toURI(ART.enemy[id]); };
+  const enemyURI = (id) => {
+    const def = toURI(ART.enemy[id]), o = DZ.forms['enemy:' + id];
+    if (o && o.asset) { const u = '/_blob/' + o.asset; DZ.fallback.set(u, def); return u; }
+    if (!o || !o.img) return def;
+    const local = DZ.localImg.get(o.img), p = DZ.pics.get(o.img);
+    if (local) return local;
+    if (typeof p === 'string') return p;
+    ensurePic(o.img).catch(() => {}); // built-in art until the picture has been read and checked
+    return def;
+  };
   const formName = (slot, lv, line) => { const o = DZ.forms[formKey(slot, lv, line)]; return (o && o.name) || EN.gearName(slot, lv, line); };
   const myLine = (slot, lv = S.eq[slot]) => EN.lineAt(S, slot, lv);
   const myGearURI = (slot, lv = S.eq[slot]) => gearURI(slot, lv, myLine(slot, lv));
@@ -4448,7 +4473,7 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
       const canSet = ['shield', 'armor'].some((k) => S.eq[k] >= EN.GEM_MIN_LV && S.eq[k] < EN.BRANCH_LV);
       const noneYet = ['shield', 'armor'].some((k) => S.eq[k] < EN.GEM_MIN_LV);
       if (!guarded && (canSet || noneYet)) {
-        if (!S.gemsOwned[el]) return `「${hit.name}」は${en}属性の攻撃。${en}の宝石（${GEM_SRC[el]}が落とす）を盾や鎧にはめると軽減できる。`;
+        if (!S.gemsOwned[el]) return `「${hit.name}」は${en}属性の攻撃。${en}の宝石（${GEM_SRC[el] ? GEM_SRC[el]() : '敵'}が落とす）を盾や鎧にはめると軽減できる。`;
         if (!canSet) return `「${hit.name}」は${en}属性の攻撃。盾か鎧を+6（段階3）まで強化すると、${en}の宝石をはめて軽減できる。`;
         return `「${hit.name}」は${en}属性の攻撃。盾や鎧に${en}の宝石をはめると、ダメージを大きく減らせる。`;
       }
@@ -5492,7 +5517,11 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
   const imgCache = new Map();
   function loadImg(src) {
     if (!imgCache.has(src)) {
-      const p = new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('load')); i.src = src; });
+      const p = new Promise((res, rej) => {
+        const i = new Image();
+        i.onload = () => (i.naturalWidth * i.naturalHeight > 2048 * 2048 ? rej(new Error('too large')) : res(i));
+        i.onerror = () => rej(new Error('load')); i.src = src;
+      });
       p.catch(() => imgCache.delete(src));
       imgCache.set(src, p);
     }
@@ -5502,7 +5531,7 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
   async function composeForm(key, o) {
     const [, tS, line] = key.split(':');
     const t = +tS;
-    const img = await loadImg('/_blob/' + o.asset);
+    const img = await loadImg(o.asset ? '/_blob/' + o.asset : DZ.localImg.get(o.img) || await ensurePic(o.img));
     const plate = o.frame !== false ? await loadImg(toURI(ART.plates[t])) : null;
     const accent = t <= 3 ? '#d8384a' : ACCENT[line];
     const glow = t <= 3 ? TRUNK_AURA[t] : GLOWC[line];
@@ -5526,38 +5555,129 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
     }
     return out;
   }
-  async function applyDesign(raw) {
-    const forms = {};
-    for (const [k, v] of Object.entries(raw || {})) {
-      if (!v || typeof v !== 'object') continue;
+  // A design list is read strictly: only known forms, a picture reference of the exact expected shape, a short plain name.
+  // The Claude version accepts only its uploaded assets, the GitHub version only its design/ files.
+  const ENEMY_IDS = new Set(EN.ENEMIES.map((e) => e.id));
+  const IMG_FILE = /^[a-z0-9-]{1,40}-[0-9a-f]{12}\.png$/;
+  function formKeyOK(k) {
+    if (k.startsWith('enemy:')) return ENEMY_IDS.has(k.slice(6));
+    const m = /^(sword|shield|armor|bag):([1-8]):(none|fire|ice|thunder)$/.exec(k);
+    return !!m && (m[3] === 'none' || (m[1] !== 'bag' && +m[2] >= 4));
+  }
+  // no markup characters, no control, bidirectional or zero-width characters; at most 14 characters (whole characters)
+  const cleanName = (v) => Array.from(String(v).replace(/[<>&"\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/g, '').trim()).slice(0, 14).join('').trim();
+  function cleanForms(raw) {
+    const forms = {}, site = !!window.SITE;
+    if (!plain(raw)) return forms;
+    for (const k of Object.keys(raw).sort()) {
+      if (!formKeyOK(k)) continue;
+      const v = raw[k];
+      if (!plain(v)) continue;
       const o = {};
-      if (typeof v.asset === 'string' && /^[0-9a-f]{32}$/.test(v.asset)) o.asset = v.asset;
-      if (typeof v.name === 'string' && v.name.trim()) o.name = v.name.replace(/[<>&"]/g, '').trim().slice(0, 14);
-      if (v.frame === false) o.frame = false;
-      if (o.asset || o.name) forms[k] = o;
+      if (!site && typeof v.asset === 'string' && /^[0-9a-f]{32}$/.test(v.asset)) o.asset = v.asset;
+      if (site && typeof v.img === 'string' && IMG_FILE.test(v.img)) o.img = v.img;
+      if (typeof v.name === 'string') { const n = cleanName(v.name); if (n) o.name = n; }
+      if (v.frame === false && !k.startsWith('enemy:')) o.frame = false;
+      if (o.asset || o.img || o.name) forms[k] = o;
     }
+    return forms;
+  }
+  // GitHub version: read a picture of the data repository into memory, and use it only if it is a PNG of at most
+  // 1.5MB and 1024px a side (checked from its header before the browser decodes it).
+  const PIC_MAX = 1536 * 1024, PIC_SIDE = 1024;
+  async function readCapped(r, max) {
+    if (+(r.headers.get('content-length') || 0) > max) throw Object.assign(new Error('big'), { code: 'big' });
+    if (!r.body || !r.body.getReader) { const b = new Uint8Array(await r.arrayBuffer()); if (b.length > max) throw Object.assign(new Error('big'), { code: 'big' }); return b; }
+    const rd = r.body.getReader(), parts = [];
+    let size = 0;
+    for (;;) {
+      const { done, value } = await rd.read();
+      if (done) break;
+      size += value.length;
+      if (size > max) { try { rd.cancel(); } catch (e) { /* ignore */ } throw Object.assign(new Error('big'), { code: 'big' }); }
+      parts.push(value);
+    }
+    const out = new Uint8Array(size);
+    let at = 0;
+    for (const x of parts) { out.set(x, at); at += x.length; }
+    return out;
+  }
+  function pngSize(u) {
+    const sig = [137, 80, 78, 71, 13, 10, 26, 10];
+    if (u.length < 33 || sig.some((b, i) => u[i] !== b)) return null;
+    const dv = new DataView(u.buffer, u.byteOffset, u.byteLength);
+    if (dv.getUint32(12) !== 0x49484452) return null; // IHDR
+    return { w: dv.getUint32(16), h: dv.getUint32(20) };
+  }
+  async function readPic(url) {
+    const ac = new AbortController(), timer = setTimeout(() => ac.abort(), 20000); // a stalled download gives up (tried again later)
+    try {
+      const r = await fetch(url, { credentials: 'omit', signal: ac.signal });
+      if (!r.ok) throw new Error('picture ' + r.status);
+      const u = await readCapped(r, PIC_MAX), sz = pngSize(u);
+      if (!sz || !sz.w || !sz.h || sz.w > PIC_SIDE || sz.h > PIC_SIDE) throw new Error('not a small PNG');
+      return URL.createObjectURL(new Blob([u], { type: 'image/png' }));
+    } finally { clearTimeout(timer); }
+  }
+  const swapSrc = (from, to) => { for (const im of document.querySelectorAll('img')) if (im.getAttribute('src') === from) im.setAttribute('src', to); };
+  function ensurePic(file) {
+    const cur = DZ.pics.get(file);
+    if (typeof cur === 'string') return Promise.resolve(cur);
+    if (cur && cur.then) return cur;
+    if (cur && Date.now() - cur.fail < 60000) return Promise.reject(new Error('failed a moment ago'));
+    const p = readPic(designBase() + encodeURIComponent(file)).then((url) => {
+      DZ.pics.set(file, url);
+      // enemies that showed their built-in art while the picture was read get it now
+      for (const [k, o] of Object.entries(DZ.forms)) if (k.startsWith('enemy:') && o.img === file && !DZ.localImg.has(file)) swapSrc(toURI(ART.enemy[k.slice(6)]), url);
+      return url;
+    }, (e) => { DZ.pics.set(file, { fail: Date.now() }); throw e; }); // tried again after a minute
+    DZ.pics.set(file, p);
+    return p;
+  }
+  // the built-in art a form stands in for (+0/+1/+2, and every gem colour for the tier-3 form)
+  function defaultURIs(key) {
+    const [slot, tS, line] = key.split(':'), t = +tS, out = [];
+    for (let sub = 0; sub < 3; sub++) {
+      const lv = (t - 1) * 3 + sub;
+      if (lv > EN.MAX_EQ) continue;
+      const els = slot === 'bag' || lv < EN.GEM_MIN_LV ? ['none'] : t <= 3 ? ['none', 'fire', 'ice', 'thunder'] : [line];
+      for (const el of els) { const svg = ART.gear[`${slot}:${lv}:${el}`]; if (svg) out.push([sub, toURI(svg)]); }
+    }
+    return out;
+  }
+  function swapDefaults(key, arr) {
+    const pairs = defaultURIs(key);
+    for (const im of document.querySelectorAll('img')) {
+      const s = im.getAttribute('src');
+      for (const [sub, u] of pairs) if (s === u) { im.setAttribute('src', arr[sub]); break; }
+    }
+  }
+  function ensureForm(key) {
+    const o = DZ.forms[key];
+    if (!o || !(o.asset || o.img)) return;
+    const sig = formSig(key, o), cur = DZ.comp.get(sig);
+    if (cur === 'busy' || Array.isArray(cur) || (cur && Date.now() - cur.fail < 60000)) return;
+    DZ.comp.set(sig, 'busy');
+    composeForm(key, o)
+      .catch((e) => { if (o.asset) return [0, 1, 2].map(() => '/_blob/' + o.asset); throw e; }) // Claude version: the asset without the frame
+      .then((arr) => {
+        DZ.comp.set(sig, arr);
+        const now = DZ.forms[key];
+        if (now && (now.asset || now.img) && formSig(key, now) === sig) swapDefaults(key, arr);
+      })
+      .catch(() => DZ.comp.set(sig, { fail: Date.now() })); // the built-in art stays; tried again after a minute
+  }
+  async function applyDesign(raw) {
+    const forms = cleanForms(raw);
     const json = JSON.stringify(forms);
     if (json === DZ.applied) return;
-    const seq = ++DZ.seq;
-    const uri = new Map();
-    await Promise.all(Object.entries(forms || {}).map(async ([key, o]) => {
-      if (!o || !o.asset || key.startsWith('enemy:')) return;
-      const ck = `${key}|${o.asset}|${o.frame !== false}`;
-      let arr = DZ.comp.get(ck);
-      if (!arr) {
-        try { arr = await composeForm(key, o); } catch (e) { arr = [0, 1, 2].map(() => '/_blob/' + o.asset); }
-        DZ.comp.set(ck, arr);
-      }
-      arr.forEach((u, i) => uri.set(key + '|' + i, u));
-    }));
-    if (seq !== DZ.seq) return;
-    DZ.forms = forms || {};
+    DZ.forms = forms;
     DZ.applied = json;
-    DZ.uri = uri;
-    EN.ENEMIES.forEach((e) => { const o = DZ.forms['enemy:' + e.id]; e.name = (o && o.name) || DZ.defaultEnemyNames[e.id]; });
+    reapplyEnemyNames();
+    if (S) for (const k of EN.SLOTS) ensureForm(formKey(k, S.eq[k], myLine(k))); // the player's own gear first
     if (busy) return;
     if (screen === 'base' && !overlayRoot.innerHTML) renderBase();
-    else if (screen === 'workshop') renderWorkshop();
+    else if (screen === 'workshop') renderWorkshop(); // an open sheet (or the PIN dialog) is left as it is
   }
   async function initDesign() {
     try {
@@ -5583,11 +5703,18 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
     } catch (e) { /* the game works without the workshop */ }
   }
 
+  document.addEventListener('error', (ev) => { // Claude version: an asset that cannot be loaded falls back to the built-in art
+    const im = ev.target;
+    if (!im || im.tagName !== 'IMG') return;
+    const f = DZ.fallback.get(im.getAttribute('src'));
+    if (f) im.setAttribute('src', f);
+  }, true);
+
   let wsTab = 'sword';
   const WS_TABS = [['sword', '剣'], ['shield', '盾'], ['armor', '鎧'], ['bag', '道具袋'], ['enemy', '敵']];
   function wsCard(key, src, name, sub) {
     const o = DZ.forms[key];
-    const changed = !!(o && (o.asset || o.name));
+    const changed = !!(o && (o.asset || o.img || o.name));
     return `<button class="ws-card ${changed ? 'changed' : ''}" data-act="wsForm" data-key="${key}">
       <img src="${src}" alt=""><span class="ws-name">${esc(name)}</span><small>${sub}</small></button>`;
   }
@@ -5612,7 +5739,9 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
         <button class="btn ws-back" data-act="wsBack">拠点に戻る</button>
       </header>
       <main class="workshop">
-        <p class="ws-note">ここで変えた絵と名前は、このゲームを遊ぶ全員の画面に反映される。変更できるのは編集権限のある人だけ。絵をタップして変える。</p>
+        <p class="ws-note">${CT.backend === 'github'
+    ? 'ここで変えた絵と名前は、遊ぶ人全員の画面に、ふつう数分で、遅くとも10分ほどで反映されます。保存には暗証番号を使います。絵をタップして変えます。'
+    : 'ここで変えた絵と名前は、このゲームを遊ぶ全員の画面に反映される。変更できるのは編集権限のある人だけ。絵をタップして変える。'}</p>
         <div class="tabs" role="tablist">${WS_TABS.map(([k, n]) => `<button role="tab" class="tab" data-act="wsTab" data-tab="${k}" aria-selected="${wsTab === k}">${n}</button>`).join('')}</div>
         ${body}
       </main>`;
@@ -5630,7 +5759,7 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
   function openForm(key, status = '') {
     DZ.editing = key;
     const f = formInfo(key), o = DZ.forms[key] || {};
-    const custom = !!o.asset;
+    const custom = !!(o.asset || o.img);
     const preview = f.enemy
       ? `<div class="ws-enemy" style="background:${AREA_BG[f.enemy.area - 1]}"><img src="${enemyURI(f.enemy.id)}" alt="${esc(f.name)}"></div>`
       : `<div class="ws-subs">${[0, 1, 2].map((s) => `<figure><img src="${gearURI(f.slot, f.lv + s, f.line)}" alt=""><figcaption>+${f.lv + s}${s === 1 ? '・飾り房' : s === 2 ? '・光' : ''}</figcaption></figure>`).join('')}</div>`;
@@ -5638,8 +5767,8 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
       ? `<div class="row"><button class="btn" data-act="wsDl" data-fmt="png">今の絵をPNGで保存</button><button class="btn" data-act="wsDl" data-fmt="svg">SVGで保存</button></div>` : '';
     const frame = f.enemy || !custom ? '' : `<label class="check"><input type="checkbox" id="wsFrame" ${o.frame === false ? '' : 'checked'}> 段階の枠と背景をつける</label>`;
     const tip = f.enemy
-      ? '背景が透明なPNGがおすすめ。戦闘画面では縦横比を保ったまま表示される。'
-      : '背景が透明なPNGがおすすめ。正方形に収まるよう縮小され、+1の飾り房と+2の光は自動で重なる。';
+      ? `背景が透明なPNGがおすすめ。戦闘画面では縦横比を保ったまま表示される。${CT.backend === 'github' ? '長い辺が512pxのPNGにして保存する。' : ''}`
+      : `背景が透明なPNGがおすすめ。正方形に収まるよう縮小され、+1の飾り房と+2の光は自動で重なる。${CT.backend === 'github' ? '長い辺が512pxのPNGにして保存する。' : ''}`;
     const inner = `
       <div class="ws-head"><div class="label">${esc(f.label)}</div><h3>${esc(f.name)}</h3></div>
       ${preview}
@@ -5680,23 +5809,143 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
     await DZ.db.doc(DESIGN_DOC).set({ forms: clean, updatedAt: Date.now() });
     await applyDesign(clean);
   }
-  async function shrink(file, max) {
+  // draw the picture again as a PNG (longest side max px; a vector picture is drawn at max px). Only pixels are kept.
+  async function shrink(file, max, vector = false) {
     const url = URL.createObjectURL(file);
     try {
-      const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('decode')); i.src = url; });
-      const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(Object.assign(new Error('decode'), { code: 'decode' })); i.src = url; });
+      const w0 = img.naturalWidth || max, h0 = img.naturalHeight || max;
+      if (w0 * h0 > 40e6) throw Object.assign(new Error('pixels'), { code: 'pixels' });
+      const k = vector ? max / Math.max(w0, h0) : Math.min(1, max / Math.max(w0, h0));
       const cv = document.createElement('canvas');
-      cv.width = Math.max(1, Math.round(img.naturalWidth * k));
-      cv.height = Math.max(1, Math.round(img.naturalHeight * k));
+      cv.width = Math.max(1, Math.round(w0 * k));
+      cv.height = Math.max(1, Math.round(h0 * k));
       cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
-      return await new Promise((res, rej) => cv.toBlob((b) => (b ? res(b) : rej(new Error('encode'))), 'image/png'));
+      return await new Promise((res, rej) => {
+        try { cv.toBlob((b) => (b ? res(b) : rej(Object.assign(new Error('encode'), { code: 'encode' }))), 'image/png'); }
+        catch (e) { rej(Object.assign(new Error('encode'), { code: 'encode' })); }
+      });
     } finally { URL.revokeObjectURL(url); }
   }
+  // ----- GitHub version: pictures in design/ and the list in content/design.json of the data repository.
+  // A replaced picture is not removed at once: it goes on a "trash" list in design.json and is removed by a later save,
+  // at least 15 minutes after, when no device can still be reading an old list that points at it.
+  const DESIGN_MAX = 64 * 1024, IMG_MAX = 1536 * 1024, TRASH_AFTER = 15 * 60000;
+  const designPath = () => `${dirName()}/design.json`;
+  const hex = (buf) => Array.from(new Uint8Array(buf), (x) => x.toString(16).padStart(2, '0')).join('');
+  const bytesB64 = (u) => { let x = ''; for (let i = 0; i < u.length; i += 0x8000) x += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(x); };
+  const formLabel = (key) => { try { return formInfo(key).label; } catch (e) { return key; } };
+  async function gitBlobSha(bytes) { // the id git gives a file's content
+    const head = new TextEncoder().encode(`blob ${bytes.length}\0`), all = new Uint8Array(head.length + bytes.length);
+    all.set(head); all.set(bytes, head.length);
+    return hex(await crypto.subtle.digest('SHA-1', all));
+  }
+  const cleanTrash = (t) => (Array.isArray(t) ? t.filter((x) => plain(x) && typeof x.file === 'string' && IMG_FILE.test(x.file) && Number.isFinite(x.at)).slice(0, 300) : []);
+  // the trash list keeps GitHub's time (from the commits this device makes), never only this device's clock;
+  // an entry written before that time was known has at = 0 and is dated by a later save
+  const serverNow = () => (typeof GH.skew === 'number' ? Date.now() + GH.skew : null);
+  const noteTime = (res) => { const t = res && res.commit && res.commit.committer && Date.parse(res.commit.committer.date); if (Number.isFinite(t)) GH.skew = t - Date.now(); };
+  const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function ghReadDesign() {
+    let cur = null;
+    try { cur = await gh(`/contents/${ghEnc(designPath())}?ref=${ghRef()}`); } catch (e) { if (e.status !== 404) throw e; }
+    if (!cur) return { sha: null, forms: {}, trash: [] };
+    let d = null;
+    try { d = JSON.parse(b64dec(cur.content)); } catch (e) { d = null; }
+    // a list that cannot be read is never overwritten: it may hold the other names and pictures
+    if (!plain(d) || d.v !== 1 || (d.forms !== undefined && !plain(d.forms))) throw Object.assign(new Error('broken'), { status: 'broken' });
+    return { sha: cur.sha, forms: cleanForms(d.forms || {}), trash: cleanTrash(d.trash) };
+  }
+  // change one form on the latest list on GitHub (once more, a moment later, if it changed in between).
+  // Pictures due for removal leave the list in this same write, and are removed only after it succeeded:
+  // a device that uses such a picture again at the same time makes this write fail, and on the retry it is in use.
+  async function ghEditDesign(key, change, what) {
+    for (let attempt = 0; ; attempt++) {
+      const d = await ghReadDesign();
+      const before = d.forms[key] || {};
+      const o = { ...before, ...change };
+      for (const k of Object.keys(change)) if (change[k] === undefined) delete o[k];
+      delete o.asset;
+      const forms = cleanForms({ ...d.forms, [key]: o });
+      const used = new Set(Object.values(forms).map((x) => x.img).filter(Boolean));
+      const now = serverNow();
+      let trash = d.trash.filter((x) => !used.has(x.file)).map((x) => (x.at === 0 && now != null ? { ...x, at: now } : x));
+      if (before.img && !used.has(before.img) && !trash.some((x) => x.file === before.img)) trash.push({ file: before.img, at: now != null ? now : 0 });
+      const due = now == null ? [] : trash.filter((x) => x.at > 0 && now - x.at > TRASH_AFTER).slice(0, 5); // a few per save
+      trash = trash.filter((x) => !due.includes(x));
+      const text = JSON.stringify({ v: 1, forms, trash }, null, 1) + '\n';
+      if (byteLen(text) > DESIGN_MAX) throw Object.assign(new Error('big'), { status: 'big' });
+      try {
+        noteTime(await gh(`/contents/${ghEnc(designPath())}`, { method: 'PUT', body: JSON.stringify({ message: `デザイン工房：${formLabel(key)}${what}`, content: b64enc(text), branch: GH.cfg.branch || 'main', ...(d.sha ? { sha: d.sha } : {}) }) }));
+      } catch (e) {
+        if (!(e.status === 409 || e.status === 422) || attempt >= 1) throw e;
+        await pause(1000);
+        continue;
+      }
+      if (due.length) await ghRemovePictures(due.map((x) => x.file));
+      return forms;
+    }
+  }
+  async function ghRemovePictures(files) { // best effort: a file that cannot be removed now just stays in the repository
+    let list;
+    try { list = await gh(`/contents/design?ref=${ghRef()}`); } catch (e) { return; }
+    const there = new Map((Array.isArray(list) ? list : []).filter((x) => plain(x) && typeof x.name === 'string' && typeof x.sha === 'string').map((x) => [x.name, x.sha]));
+    for (const f of files) {
+      if (!there.has(f)) continue;
+      try { noteTime(await gh(`/contents/${ghEnc(`design/${f}`)}`, { method: 'DELETE', body: JSON.stringify({ message: 'デザイン工房：使わなくなった絵を削除', sha: there.get(f), branch: GH.cfg.branch || 'main' }) })); }
+      catch (e) { /* left for now */ }
+    }
+  }
+  async function ghPutImage(file, bytes, key) {
+    try {
+      noteTime(await gh(`/contents/${ghEnc(`design/${file}`)}`, { method: 'PUT', body: JSON.stringify({ message: `デザイン工房：${formLabel(key)}の絵を追加`, content: bytesB64(bytes), branch: GH.cfg.branch || 'main' }) }));
+    } catch (e) {
+      if (e.status !== 422) throw e;
+      // 422: perhaps a file of that name is there already. It is used only if it is exactly this picture.
+      let f = null;
+      try { f = await gh(`/contents/${ghEnc(`design/${file}`)}?ref=${ghRef()}`); } catch (x) { throw e; }
+      if (!f || f.sha !== await gitBlobSha(bytes)) throw e;
+    }
+  }
+  async function ghSaveForm(key, change, what, upload) {
+    if (upload) { await ghReadDesign(); await ghPutImage(upload.file, upload.bytes, key); } // a broken list stops the save before any picture is stored
+    const forms = await ghEditDesign(key, change, what);
+    GH.pendingDesign = { json: JSON.stringify(forms), until: Date.now() + 15 * 60000 }; // until the site has caught up
+    try { localStorage.setItem(DESIGN_CACHE(), JSON.stringify(forms)); localStorage.setItem(DESIGN_PENDING(), JSON.stringify(GH.pendingDesign)); } catch (e) { /* ignore */ }
+    await applyDesign(forms);
+  }
+  const ghDesignFail = (e) => (e && e.code === 'decode' ? 'この画像を読みこめませんでした。別の画像を選んでください。'
+    : e && e.code === 'encode' ? 'この画像はPNGにできませんでした。PNGかJPEGの画像を選んでください。'
+    : e && e.code === 'too_large' ? '画像が大きすぎます。20MBまでの画像を選んでください。'
+    : e && e.code === 'pixels' ? '画像の画素数が多すぎます（4000万画素まで）。小さくしてから選んでください。'
+    : e && e.status === 'broken' ? `保存しませんでした。GitHubの問題データのリポジトリにある ${designPath()} が壊れています（手で書きかえたときなど）。GitHubでこのファイルを直すか消してから、もう一度試してください。`
+    : e && e.status === 'big' ? '絵と名前の一覧が大きすぎて保存できませんでした。'
+    : e && e.status === 422 ? '保存できませんでした。少し待ってからもう一度試してください。'
+    : ghFail(e).replace('もう一度押してください', 'もう一度試してください'));
+  const DESIGN_DONE = '遊ぶ人の画面には、ふつう数分で、遅くとも10分ほどで反映される。';
   async function uploadFor(key, file) {
-    if (!DZ.assets || !DZ.db || DZ.busy) return;
+    if (DZ.busy) return;
     let type = file.type;
     if (!type && /\.svg$/i.test(file.name)) type = 'image/svg+xml';
     if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml'].includes(type)) { openForm(key, 'PNG・JPEG・WebP・GIF・SVGのどれかの画像を選んでください。'); return; }
+    if (CT.backend === 'github') {
+      if (file.size > 20 * 1024 * 1024) { openForm(key, ghDesignFail({ code: 'too_large' })); return; }
+      DZ.busy = true;
+      openForm(key);
+      try {
+        const blob = await shrink(file, 512, type === 'image/svg+xml'); // every picture is drawn again as a PNG
+        if (blob.size > IMG_MAX) throw Object.assign(new Error('big'), { code: 'too_large' });
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        const name = `${key.replace(/:/g, '-')}-${hex(await crypto.subtle.digest('SHA-256', bytes)).slice(0, 12)}.png`;
+        if (!IMG_FILE.test(name)) throw new Error('name');
+        DZ.localImg.set(name, URL.createObjectURL(blob));
+        await ghSaveForm(key, { img: name }, 'の絵を差し替え', { file: name, bytes });
+        DZ.busy = false;
+        openForm(key, '絵を差し替えた。' + DESIGN_DONE);
+      } catch (e) { DZ.busy = false; openForm(key, ghDesignFail(e)); }
+      return;
+    }
+    if (!DZ.assets || !DZ.db) return;
     if (type === 'image/svg+xml' && file.size > 2 * 1024 * 1024) { openForm(key, UP_ERR.too_large); return; }
     DZ.busy = true;
     openForm(key);
@@ -5717,7 +5966,18 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
     }
   }
   async function editForm(key, change, msg) {
-    if (!DZ.db || DZ.busy) return;
+    if (DZ.busy) return;
+    if (CT.backend === 'github') {
+      DZ.busy = true;
+      try {
+        const what = 'img' in change ? 'を元の絵に戻す' : 'frame' in change ? 'の枠を変更' : 'name' in change ? (change.name ? 'の名前を変更' : 'を元の名前に戻す') : 'を変更';
+        await ghSaveForm(key, change, what);
+        DZ.busy = false;
+        openForm(key, msg + DESIGN_DONE);
+      } catch (e) { DZ.busy = false; openForm(key, ghDesignFail(e)); }
+      return;
+    }
+    if (!DZ.db) return;
     const prev = DZ.forms[key] || {};
     const next = { ...prev, ...change };
     for (const k of Object.keys(change)) if (change[k] === undefined) delete next[k];
@@ -5855,10 +6115,10 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
       case 'wsTab': wsTab = t.dataset.tab; renderWorkshop(); break;
       case 'wsForm': openForm(t.dataset.key); break;
       case 'wsClose': closeOverlay(); break;
-      case 'wsRevert': if (DZ.editing) editForm(DZ.editing, { asset: undefined, frame: undefined }, '元の絵に戻した。'); break;
+      case 'wsRevert': if (DZ.editing) editForm(DZ.editing, { asset: undefined, img: undefined, frame: undefined }, '元の絵に戻した。'); break;
       case 'wsName': {
         const v = ($('wsName') || {}).value || '';
-        const name = v.replace(/[<>&"]/g, '').trim().slice(0, 14);
+        const name = cleanName(v);
         if (DZ.editing) editForm(DZ.editing, { name: name || undefined }, name ? '名前を保存した。' : '元の名前に戻した。');
         break;
       }
@@ -5887,8 +6147,9 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
   const siteScope = () => (repoSeg() ? repoSeg() + ':' : '');
   const OLD_TEACHER_KEY = 'akebono-bio-teacher';
   const SITE_CACHE = () => 'akebono-bio-content:' + siteScope(), TEACHER_KEY = () => 'akebono-bio-teacher:' + siteScope();
+  const DESIGN_CACHE = () => 'akebono-bio-design:' + siteScope(), DESIGN_PENDING = () => 'akebono-bio-design-pending:' + siteScope();
   const siteFile = (k) => (k === 'settings' ? 'settings.txt' : `${k}.txt`);
-  const GH = { cfg: null, token: null, pending: {}, hiddenAt: 0, lastUse: 0, fails: 0, waitUntil: 0 }; // token: in memory only, after the PIN
+  const GH = { cfg: null, token: null, pending: {}, pendingDesign: null, skew: null, hiddenAt: 0, lastUse: 0, fails: 0, waitUntil: 0 }; // token: in memory only, after the PIN
   let siteLast = 0, siteStatus = '', dataOnPages = false, unlockWait = null;
   const repoSeg = () => { const seg = location.pathname.split('/').filter(Boolean)[0] || ''; return seg && !/\.html?$/.test(seg) ? seg : ''; };
   const dataRepo = () => (repoSeg() ? repoSeg() + ((SITE && SITE.data) || '-data') : '');
@@ -5898,6 +6159,10 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
   const contentBase = () => (siteOwner() && dataRepo()
     ? `https://raw.githubusercontent.com/${siteOwner()}/${dataRepo()}/${(SITE && SITE.branch) || 'main'}/${dirName()}/`
     : `${dirName()}/`);
+  // pictures of the design workshop: design/ of the data repository (a local preview: design/ beside the page)
+  const designBase = () => (siteOwner() && dataRepo()
+    ? `https://raw.githubusercontent.com/${siteOwner()}/${dataRepo()}/${(SITE && SITE.branch) || 'main'}/design/`
+    : 'design/');
   const teacherDevice = () => !!(SITE && GH.cfg);
   function loadSiteCache() {
     try {
@@ -5937,11 +6202,41 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
     if (screen === 'base' && !overlayRoot.innerHTML) renderBase();
     else if (screen === 'editor') renderEditor();
   }
+  // the design list: {} when the site has none, undefined when it could not be read (what we have is kept)
+  async function fetchDesign() {
+    try {
+      const r = await fetch(`${contentBase()}design.json?v=${Date.now()}`, { cache: 'no-store', credentials: 'omit' });
+      if (r.status === 404) return {};
+      if (!r.ok) return undefined;
+      const d = JSON.parse(new TextDecoder().decode(await readCapped(r, DESIGN_MAX)));
+      return plain(d) && d.v === 1 && plain(d.forms) ? d.forms : undefined;
+    } catch (e) { return undefined; }
+  }
+  function setSiteDesign(raw) {
+    if (raw === undefined) return;
+    const forms = cleanForms(raw), json = JSON.stringify(forms), p = GH.pendingDesign;
+    if (p) {
+      if (json !== p.json && Date.now() <= p.until) return; // the site has not caught up yet with this device's save
+      GH.pendingDesign = null; DZ.localImg.clear(); // from now on the pictures come from the site, as for everyone
+      try { localStorage.removeItem(DESIGN_PENDING()); } catch (e) { /* ignore */ }
+    }
+    try { localStorage.setItem(DESIGN_CACHE(), json); } catch (e) { /* ignore */ }
+    applyDesign(forms);
+  }
+  function loadDesignCache() {
+    try {
+      const p = JSON.parse(localStorage.getItem(DESIGN_PENDING()) || 'null');
+      if (plain(p) && typeof p.json === 'string' && Number.isFinite(p.until) && p.until > Date.now()) GH.pendingDesign = { json: p.json, until: p.until };
+    } catch (e) { /* none */ }
+    try { const c = JSON.parse(localStorage.getItem(DESIGN_CACHE()) || 'null'); if (plain(c)) applyDesign(c); } catch (e) { /* no cache yet */ }
+  }
   async function refreshSite(force) {
     if (!force && Date.now() - siteLast < 60000) return;
     siteLast = Date.now();
     if (teacherDevice()) await probeDataPages();
-    setSiteTexts(await fetchSiteTexts());
+    const [texts, design] = await Promise.all([fetchSiteTexts(), fetchDesign()]);
+    setSiteTexts(texts);
+    setSiteDesign(design);
   }
   // The data repository must not be published with Pages (a page there would run on this game's site). The teacher is warned.
   async function probeDataPages() {
@@ -5949,6 +6244,7 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
     try { const r = await fetch(`/${dataRepo()}/${dirName()}/settings.txt?v=${Date.now()}`, { cache: 'no-store', credentials: 'omit' }); dataOnPages = r.ok; } catch (e) { /* offline */ }
   }
   function initSite() {
+    loadDesignCache();
     refreshSite(true);
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') { GH.hiddenAt = Date.now(); return; }
@@ -5961,7 +6257,7 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
     CT.downloads = { // plain browser download instead of the Claude runtime
       save: ({ filename, data }) => {
         const a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob([data], { type: 'text/plain;charset=utf-8' }));
+        a.href = URL.createObjectURL(data instanceof Blob ? data : new Blob([data], { type: 'text/plain;charset=utf-8' }));
         a.download = filename; document.body.appendChild(a); a.click();
         setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
         return Promise.resolve();
@@ -5992,6 +6288,7 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
   }
   function enableTeacher() {
     CT.canEdit = true; CT.backend = 'github';
+    DZ.canEdit = true; DZ.downloads = CT.downloads; // the design workshop saves to the data repository too
     if (screen === 'base' && !overlayRoot.innerHTML) renderBase();
   }
   // ----- the PIN: the token is stored only in sealed form (PBKDF2-SHA256 + AES-GCM), and opened in memory when needed
@@ -6037,7 +6334,7 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
   function openUnlock(msg) {
     overlay(`<div class="sheet" role="dialog" aria-label="暗証番号">
       <h3>暗証番号</h3>
-      <p class="ws-note">問題と数値を保存するには、先生の設定で決めた暗証番号を入れてください。この画面を閉じるか、しばらく別のアプリを使っていると、また鍵がかかります。</p>
+      <p class="ws-note">問題と数値、絵と名前を保存するには、先生の設定で決めた暗証番号を入れてください。この画面を閉じるか、しばらく別のアプリを使っていると、また鍵がかかります。</p>
       <label class="ed-field">暗証番号<input id="unPin" class="ws-input" type="password" autocomplete="off" autocapitalize="off"></label>
       <p class="ed-msg" id="unMsg" aria-live="polite">${esc(msg || '')}</p>
       <div class="row"><button class="btn primary" data-act="unlockGo">鍵を開ける</button><button class="btn" data-act="close">閉じる</button></div>
@@ -6148,7 +6445,7 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
   }
   function teacherClear() {
     try { localStorage.removeItem(TEACHER_KEY()); localStorage.removeItem(OLD_TEACHER_KEY); } catch (e) { /* ignore */ }
-    GH.cfg = null; GH.token = null; CT.canEdit = false; CT.backend = null;
+    GH.cfg = null; GH.token = null; CT.canEdit = false; CT.backend = null; DZ.canEdit = false;
     closeOverlay(); renderBase();
   }
   function siteNote() {
