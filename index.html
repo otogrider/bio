@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-mwDpKETuDe5C/a2O2bngGp4VuKPgzcYs1OpzCthRxGA=' 'sha256-GK45n4EYK8nekW6cd7GV3yDMWNby1VpisIWimfG/F4A=' 'sha256-u/u5mf2JSAf7tT+kNO8AcmC/zokNM4ZWU23CnHh+82c=' 'sha256-XYlssxn9axcQM9NqT9qIBCOaWda6Y3gmE/hRXjqUbHc=' 'sha256-EQkIEqLdQlRW+GR1i96XOTu5sbY2YdabkRw13t1BxEA=' 'sha256-xfqL8T3QE5T1AfLA9NaDgRO8OowC2Sda5clcJiB0YOA='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://raw.githubusercontent.com https://api.github.com; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-mwDpKETuDe5C/a2O2bngGp4VuKPgzcYs1OpzCthRxGA=' 'sha256-GK45n4EYK8nekW6cd7GV3yDMWNby1VpisIWimfG/F4A=' 'sha256-u/u5mf2JSAf7tT+kNO8AcmC/zokNM4ZWU23CnHh+82c=' 'sha256-XYlssxn9axcQM9NqT9qIBCOaWda6Y3gmE/hRXjqUbHc=' 'sha256-EQkIEqLdQlRW+GR1i96XOTu5sbY2YdabkRw13t1BxEA=' 'sha256-Uu9jOfIU7V+4Gk/HPu7yDPVsmxLiKEM5qMQXGn7/XyQ='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://raw.githubusercontent.com https://api.github.com; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#14111a">
@@ -276,7 +276,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 800; margin: 0; text-wrap
 .ehp-line { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; font-size: 12px; }
 .ehp-line .bar { height: 9px; }
 .en-stage { position: relative; flex: 1; display: grid; place-items: end center; }
-.en-stage img { width: min(58vw, 220px); height: auto; filter: drop-shadow(0 6px 12px rgba(0,0,0,.5)); transition: opacity .5s, transform .5s, filter .5s; }
+.en-stage img { width: auto; height: auto; max-width: 100%; max-height: min(58vw, 220px); filter: drop-shadow(0 6px 12px rgba(0,0,0,.5)); transition: opacity .5s, transform .5s, filter .5s; }
 .en-stage img.hit { animation: ehit .36s ease; }
 .en-stage img.down { opacity: 0; transform: scale(.85) translateY(10px); filter: blur(4px) brightness(2); }
 .fx { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
@@ -348,7 +348,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 800; margin: 0; text-wrap
 }
 @media (max-height: 700px) {
   .arena { min-height: 210px; }
-  .en-stage img { width: min(46vw, 170px); }
+  .en-stage img { max-height: min(46vw, 170px); }
   .cmd { min-height: 52px; }
 }
 
@@ -394,7 +394,6 @@ h1, h2, h3 { font-family: var(--display); font-weight: 800; margin: 0; text-wrap
 .evolve.t8 .rays { background: repeating-conic-gradient(from 0deg, rgba(255, 224, 138, .26) 0 10deg, transparent 10deg 20deg); }
 
 /* ---------- design workshop ---------- */
-.en-stage img { max-height: min(58vw, 220px); object-fit: contain; }
 .ws-open { width: 100%; min-height: 52px; font-weight: 700; }
 .ws-back { min-height: 40px; padding: 6px 12px; font-size: 13px; white-space: nowrap; }
 .workshop { display: flex; flex-direction: column; gap: 10px; padding-bottom: 32px; }
@@ -427,7 +426,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 800; margin: 0; text-wrap
 .ws-subs img { width: 100%; max-width: 120px; aspect-ratio: 1; }
 .ws-subs figcaption { font-size: 12px; color: var(--muted); }
 .ws-enemy { border-radius: 14px; border: 1px solid var(--line); display: grid; place-items: center; padding: 12px; }
-.ws-enemy img { width: min(60vw, 220px); max-height: 220px; object-fit: contain; }
+.ws-enemy img { width: auto; height: auto; max-width: 100%; max-height: min(58vw, 220px); }
 .pill { font-size: 11px; letter-spacing: 0; color: var(--text); background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 99px; padding: 0 8px; font-weight: 400; }
 .file-btn { box-sizing: border-box; position: relative; display: flex; align-items: center; justify-content: center; text-align: center; cursor: pointer; }
 .file-btn input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
@@ -6001,7 +6000,7 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
       ? `<div class="row"><button class="btn" data-act="wsDl" data-fmt="png">今の絵をPNGで保存</button><button class="btn" data-act="wsDl" data-fmt="svg">SVGで保存</button></div>` : '';
     const frame = f.spell || f.enemy || !custom ? '' : `<label class="check"><input type="checkbox" id="wsFrame" ${o.frame === false ? '' : 'checked'}> 段階の枠と背景をつける</label>`;
     const tip = f.enemy
-      ? `背景が透明なPNGがおすすめ。戦闘画面では縦横比を保ったまま表示される。${CT.backend === 'github' ? '長い辺が512pxのPNGにして保存する。' : ''}`
+      ? `背景が透明なPNGがおすすめ。戦闘画面では縦横比を保ったまま、高さはもとの絵と同じまで、横は戦闘画面の幅まで使って表示される。敵のまわりの余白を切り落とすと大きく見える。${CT.backend === 'github' ? '長い辺が512pxのPNGにして保存する。' : ''}`
       : `背景が透明なPNGがおすすめ。正方形に収まるよう縮小され、+1の飾り房と+2の光は自動で重なる。${CT.backend === 'github' ? '長い辺が512pxのPNGにして保存する。' : ''}`;
     const inner = `
       <div class="ws-head"><div class="label">${esc(f.label)}</div><h3>${esc(f.name)}</h3></div>
