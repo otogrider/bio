@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-mwDpKETuDe5C/a2O2bngGp4VuKPgzcYs1OpzCthRxGA=' 'sha256-GK45n4EYK8nekW6cd7GV3yDMWNby1VpisIWimfG/F4A=' 'sha256-u/u5mf2JSAf7tT+kNO8AcmC/zokNM4ZWU23CnHh+82c=' 'sha256-G7rtOYHTEu3piLUu4KEe+1fUa/NS2o5cLuZMAlltbMM=' 'sha256-LvcEvCXLiHkzkpSOTJUQOHnnkghJre+tRECXIy5PlD4=' 'sha256-IwSLKe0+iDIIFjuUhNwDJd+f2HfD6Kn52nHOU21Ys6A='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://raw.githubusercontent.com https://api.github.com; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-mwDpKETuDe5C/a2O2bngGp4VuKPgzcYs1OpzCthRxGA=' 'sha256-GK45n4EYK8nekW6cd7GV3yDMWNby1VpisIWimfG/F4A=' 'sha256-u/u5mf2JSAf7tT+kNO8AcmC/zokNM4ZWU23CnHh+82c=' 'sha256-G7rtOYHTEu3piLUu4KEe+1fUa/NS2o5cLuZMAlltbMM=' 'sha256-27LD9E3rsldCIjmX7tsTZ9eToRhJQXhasO2etpRk+Ec=' 'sha256-JeYLEq3eA8nZVkGX1N8xDc2osKBjea9JthEhEzbL6Rw='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://raw.githubusercontent.com https://api.github.com; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-src 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#14111a">
@@ -108,6 +108,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 800; margin: 0; text-wrap
 .tag.ice { color: var(--ice); }
 .tag.thunder { color: var(--thunder); }
 .tag.none { color: var(--muted); }
+.tag.dawn { color: var(--gold-2); }
 
 /* ---------- base ---------- */
 .top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-block: 6px 12px; }
@@ -2880,6 +2881,7 @@ const Engine = (() => {
   const MAX_EQ = 23;
   const tierOf = (lv) => Math.min(8, Math.floor(lv / 3) + 1);
   const GEM_MIN_LV = 6;   // tier 3: a gem can be set (and swapped freely)
+  const DAWN_LV = 15;     // tier 6: a sword of the none line takes the 暁光 element ('dawn'), the only weakness of stages 26–30
   const BRANCH_LV = 9;    // tier 4: the gem set at that moment decides the line, for good
   function tierTable(bases, step) {
     const out = [];
@@ -3016,13 +3018,13 @@ const Engine = (() => {
     D('eagle', '嵐の大鷲', 'thunder', 'ice', ['charge'], { atk: ['爪', 'くちばし'], charge: '空高く舞い上がった！', big: '雷の急降下' }, 'ためてから急降下。雷の耐性とHP。'),
     D('thunderdragon', '雷竜', 'thunder', 'ice', ['boss', 'charge'], { atk: ['かみつき'], elem: '雷の息', charge: '雷雲を呼び寄せている！', big: '天雷' },
       '盾と鎧に雷の耐性。剣と呪文は氷が有利。'),
-    D('mage', '闇の魔導士', null, 'thunder', ['mage3'], { atk: ['杖で打つ'], fire: '火炎の呪文', ice: '氷結の呪文', thunder: '雷撃の呪文' },
+    D('mage', '闇の魔導士', null, 'dawn', ['mage3'], { atk: ['杖で打つ'], fire: '火炎の呪文', ice: '氷結の呪文', thunder: '雷撃の呪文' },
       '炎・氷・雷の呪文を順に使う。盾と鎧に別々の耐性があると強い。'),
-    D('shadowsw', '影の剣士', null, 'fire', ['counter', 'heavy'], { atk: ['影の刃'], heavy: '影の大振り' }, '剣で攻撃すると切り返してくる。呪文と防御。'),
-    D('twohead', '双頭の魔獣', 'fire', 'thunder', ['twin'], { twin: ['炎の頭の息', '氷の頭の息'] }, '炎と氷で1回ずつ攻撃。盾は炎、鎧は氷のように耐性を分けよう。',
+    D('shadowsw', '影の剣士', null, 'dawn', ['counter', 'heavy'], { atk: ['影の刃'], heavy: '影の大振り' }, '剣で攻撃すると切り返してくる。切り返しに耐えられないうちは、呪文と防御。'),
+    D('twohead', '双頭の魔獣', 'fire', 'dawn', ['twin'], { twin: ['炎の頭の息', '氷の頭の息'] }, '炎と氷で1回ずつ攻撃。盾は炎、鎧は氷のように耐性を分けよう。',
       { els: ['fire', 'ice'] }),
-    D('tknight', '黄昏の騎士', null, null, ['tank', 'reflect'], { atk: ['黄昏の剣'] }, '固い上に呪文を跳ね返す。鍛え上げた剣の攻撃力で。'),
-    D('lord', '黄昏の魔王', null, null, ['boss', 'mage3', 'charge'],
+    D('tknight', '黄昏の騎士', null, 'dawn', ['tank', 'reflect'], { atk: ['黄昏の剣'] }, '固い上に呪文を跳ね返す。鍛え上げた剣の攻撃力で。'),
+    D('lord', '黄昏の魔王', null, 'dawn', ['boss', 'mage3', 'charge'],
       { atk: ['魔剣'], fire: '獄炎', ice: '凍てつく波動', charge: '世界が黄昏に染まっていく…', big: '黄昏の雷' }, 'ここまでのすべての成長が試される。', { chargeEl: 'thunder' }),
   ];
   const ROLE_TAG = {
@@ -3097,6 +3099,7 @@ const Engine = (() => {
     const g = s.gems[slot];
     return g && s.gemsOwned[g] ? g : 'none';
   };
+  const hasDawn = (s) => s.eq.sword >= DAWN_LV && lineOf(s, 'sword') === 'none';
   const elemOf = (s, slot) => { const l = lineOf(s, slot); return l && l !== 'none' ? l : null; };
   function stats(s) {
     const h = baseStats(s.lv), e = s.eq;
@@ -3116,7 +3119,7 @@ const Engine = (() => {
       atk: h.atk + Math.round(EQ.swordAtk[e.sword] * nb('sword')),
       def: h.def + Math.round(EQ.shieldDef[e.shield] * nb('shield')) + Math.round(EQ.armorDef[e.armor] * nb('armor')),
       mag: h.mag, swordEq: EQ.swordAtk[e.sword], cap: EQ.bagCap[tierOf(e.bag) - 1], boost: itemBoost(e.bag),
-      swordEl: elemOf(s, 'sword'), res,
+      swordEl: hasDawn(s) ? 'dawn' : elemOf(s, 'sword'), res,
     };
   }
   // what one item gives (for the equipment sheet)
@@ -3483,7 +3486,7 @@ const Engine = (() => {
   return {
     configure, setLastStage(n) { STAGES = n; }, get LAST() { return STAGES; },
     get MAX_LV() { return MAX_LV; }, get NONE_BONUS() { return NONE_BONUS; }, get NONE_RES() { return NONE_RES; },
-    QUIZ, ELEMS, SLOTS, GEM_SLOTS, SLOT_NAME, NAMES, LINE_NAME, EQ, MAX_EQ, tierOf, GEM_MIN_LV, BRANCH_LV, RES,
+    QUIZ, ELEMS, SLOTS, GEM_SLOTS, SLOT_NAME, NAMES, LINE_NAME, EQ, MAX_EQ, tierOf, GEM_MIN_LV, BRANCH_LV, DAWN_LV, hasDawn, RES,
     MATS, ORES, ITEMS, ITEM_ORDER, SPELLS, SPELL_ELS, SPELL_STEP, SPELL_TIERS, DEFAULT_SPELL_NAMES, SPELL_NAMES, spellTier, spellName, spellPower, spellPowerOf, isAttackSpell,
     SPECIALS, AREAS, ENEMIES, ROLE_TAG, GEM_DROP,
     baseStats, expNeed, newState, stats, lineOf, lineAt, itemEffect, resOf, bagCount, learned, gearName, itemBoost,
@@ -4298,7 +4301,9 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
     'radial-gradient(120% 90% at 50% 100%, #5c4aa8 0%, #221c46 55%, #0a0918 100%)',
     'radial-gradient(120% 90% at 50% 100%, #a84a5a 0%, #3a1238 55%, #12060f 100%)',
   ];
-  const EL_NAME = { fire: '炎', ice: '氷', thunder: '雷', none: '無' };
+  const EL_NAME = { fire: '炎', ice: '氷', thunder: '雷', none: '無', dawn: '暁光' };
+  // the sword's line as the player knows it: a none-line sword shows 暁光 once it has it (a hidden feature until then)
+  const lineLabel = (slot, lv, ln) => (slot === 'sword' && ln === 'none' && lv >= EN.DAWN_LV ? '暁光' : EL_NAME[ln]);
   // where each gem drops (names follow the enemies' current names, which the design workshop can change)
   const stageName = (st) => (EN.ENEMIES[st - 1] ? EN.ENEMIES[st - 1].name : '');
   const GEM_SRC = { fire: () => `${stageName(2)}や${stageName(5)}など`, ice: () => `${stageName(4)}やエリア3の敵`, thunder: () => `${stageName(9)}や${stageName(10)}など` };
@@ -4405,6 +4410,7 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
     const t = EN.tierOf(lv);
     if (!line) return '';
     if (slot === 'sword') {
+      if (line === 'none' && lv >= EN.DAWN_LV) return '暁光の系統：攻撃力が15%高く、剣での攻撃が暁光属性になる。暁光は、ステージ26〜30の敵の弱点（1.5倍）。';
       if (line === 'none') return t >= 4 ? '無の系統：攻撃力が15%高い。' : '宝石なし：属性はない。';
       return `剣での攻撃が${EL_NAME[line]}属性（呪文の属性は、唱えるときに選ぶ）。弱点をつくと1.5倍、${EL_NAME[line]}属性の敵には半分。`;
     }
@@ -4676,7 +4682,7 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
 
     const cards = EN.SLOTS.map((k) => {
       const lv = S.eq[k], ln = EN.lineOf(S, k);
-      const lnTag = ln && ln !== 'none' ? `<span class="tag ${ln}">${EL_NAME[ln]}</span>` : '';
+      const lnTag = k === 'sword' && EN.hasDawn(S) ? '<span class="tag dawn">暁光</span>' : ln && ln !== 'none' ? `<span class="tag ${ln}">${EL_NAME[ln]}</span>` : '';
       return `<button class="gear-card" data-act="gear" data-slot="${k}" aria-label="${EN.SLOT_NAME[k]}：${esc(gearTitle(k, lv))}">
         <img src="${myGearURI(k)}" alt="">
         <span class="g-name">${esc(gearName(k, lv))}${lnTag}</span>
@@ -4772,6 +4778,24 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
       <div class="dock"><div class="dock-inner">
         <button class="btn primary big" data-act="depart">${S.runs === 0 ? '冒険に出る' : '出発する'}<small>ステージ1・${esc(EN.AREAS[0].name)}から</small></button>
       </div></div>`;
+    if (!overlayRoot.innerHTML) dawnRevealOnce();
+  }
+  // 暁光 is told once on each device: at the upgrade to +15, or on the base for a record already past +15 (a record made
+  // before this version, or one read from a save code). Only a mark on the device; the record itself is not changed.
+  let dawnShown = false;
+  const dawnSeen = () => { if (dawnShown) return true; try { return localStorage.getItem(LS_KEY + ':dawn') === '1'; } catch (e) { return false; } };
+  const markDawn = () => { dawnShown = true; try { localStorage.setItem(LS_KEY + ':dawn', '1'); } catch (e) { /* this page load only */ } };
+  function dawnRevealOnce() {
+    if (!S || !EN.hasDawn(S) || dawnSeen()) return;
+    markDawn();
+    overlay(`<div class="sheet evolve t${EN.tierOf(S.eq.sword)}" role="dialog" aria-label="暁光の力">
+      <div class="rays"></div>
+      <img src="${myGearURI('sword')}" alt="${esc(gearName('sword', S.eq.sword))}">
+      <h3>暁光の力</h3>
+      <p class="gold-note">無の系統の剣に、暁光の力が宿った。</p>
+      <p>${esc(lineText('sword', S.eq.sword, 'none'))}</p>
+      <button class="btn primary big" data-act="close" style="position:relative">OK</button>
+    </div>`, false);
   }
   function resLine(st) {
     const parts = ['fire', 'ice', 'thunder'].filter((el) => st.res[el] > 0.001).map((el) => `<span class="tag ${el}">${EL_NAME[el]} ${Math.round(st.res[el] * 100)}%</span>`);
@@ -4799,7 +4823,7 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
     }
     if (lv >= EN.BRANCH_LV) {
       const ln = EN.lineOf(S, slot);
-      return `<div class="box"><h4>系統：${EL_NAME[ln]}</h4><p>${lineText(slot, lv, ln)}</p><p class="muted">系統は段階4に進化したときに決まった。</p></div>`;
+      return `<div class="box"><h4>系統：${lineLabel(slot, lv, ln)}</h4><p>${lineText(slot, lv, ln)}</p><p class="muted">系統は段階4に進化したときに決まった。</p></div>`;
     }
     const cur = S.gems[slot] || '';
     const opts = [['', 'なし', true], ['fire', '炎', S.gemsOwned.fire], ['ice', '氷', S.gemsOwned.ice], ['thunder', '雷', S.gemsOwned.thunder]];
@@ -4848,7 +4872,7 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
         <button class="btn primary big ${armed ? 'armed' : ''}" data-act="upgrade" data-slot="${slot}" ${can ? '' : 'disabled'}>${label}</button>
         ${can ? '' : '<p class="muted">素材が足りない。ステージで集めよう。</p>'}</div>`;
     }
-    const lnInfo = slot !== 'bag' && ln ? `・${EL_NAME[ln]}の${EN.tierOf(lv) >= 4 ? '系統' : '宝石'}` : '';
+    const lnInfo = slot !== 'bag' && ln ? `・${lineLabel(slot, lv, ln)}の${EN.tierOf(lv) >= 4 ? '系統' : '宝石'}` : '';
     overlay(`<div class="sheet" role="dialog" aria-label="${EN.SLOT_NAME[slot]}の強化">
       <div class="sheet-head"><img src="${myGearURI(slot)}" alt="${esc(gearName(slot, lv))}">
         <div><div class="label">${EN.SLOT_NAME[slot]}・段階${EN.tierOf(lv)}${lnInfo}</div><h3>${esc(gearTitle(slot, lv))}</h3><p class="eff">${effText(slot, lv)}</p></div></div>
@@ -4863,6 +4887,11 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
     let extra = '';
     if (EN.tierOf(lv) === 3 && slot !== 'bag') extra = '<p>宝石をはめられるようになった。</p>';
     if (branched) extra = `<p>${EL_NAME[branched]}の系統に進化した。${esc(lineText(slot, lv, branched))}</p>`;
+    if (slot === 'sword' && prevLv < EN.DAWN_LV && lv >= EN.DAWN_LV && EN.hasDawn(S)) {
+      markDawn();
+      extra = '<p class="gold-note">無の系統の剣に、暁光の力が宿った。</p>' +
+        `<p>${esc(lineText(slot, lv, 'none'))}</p>`;
+    }
     overlay(`<div class="sheet evolve t${EN.tierOf(lv)}" role="dialog" aria-label="進化">
       <div class="rays"></div>
       <img src="${myGearURI(slot)}" alt="${esc(gearName(slot, lv))}">
@@ -4899,7 +4928,8 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
   function renderBattle() {
     const def = B.def;
     const known = S.seen[def.id];
-    const weak = known ? (def.weak ? `弱点：${EL_NAME[def.weak]}` : '弱点：なし') : '弱点：？';
+    // 暁光 stays unnamed until the player's own sword has it: those enemies show 弱点：？ even when beaten
+    const weak = known ? (def.weak ? `弱点：${def.weak === 'dawn' && !EN.hasDawn(S) ? '？' : EL_NAME[def.weak]}` : '弱点：なし') : '弱点：？';
     const tr = known ? traits(def).map((t) => `<span class="trait">${t}</span>`).join('') : '';
     app.innerHTML = `
       <section class="battle" id="battle">
@@ -5575,7 +5605,7 @@ if (typeof module !== 'undefined') module.exports = AutoPlay;
     return `<div class="ed-box"><h4>自動プレイの結果（遊べる最後のステージ${s.last}をはじめてクリアするまで・各${s.rows[0].n}人の真ん中の値）</h4>
       <div class="qfig"><table class="qfig-table"><tr><th>正答率</th><th>この設定</th><th>いまの設定（同じステージまで）</th></tr>${s.rows.map((x, i) =>
         `<tr><th>約${Math.round(x.acc * 100)}％</th><td>${cell(x)}</td><td>${cell(s.base[i])}</td></tr>`).join('')}</table></div>
-      <p class="ws-note">知っている問題は正解して「確実」、知らない問題は4択から当てずっぽうで「勘」を選ぶ、という生徒のまね。装備は強化できるものから順に強化する。攻撃の呪文は、MPが足りる中で、いちばん効くと考えられる属性を選ぶ（倒したことのある敵では弱点をもとに、はじめての敵では、敵の属性の反対〈無属性の敵には雷〉が弱点だと考えて）。目安であり、実際の生徒の遊び方とはちがう。</p></div>`;
+      <p class="ws-note">知っている問題は正解して「確実」、知らない問題は4択から当てずっぽうで「勘」を選ぶ、という生徒のまね。装備は強化できるものから順に強化し、宝石ははめない（剣は無の系統なので、+15から暁光属性）。攻撃の呪文は、MPが足りる中で、いちばん効くと考えられる属性を選ぶ（倒したことのある敵では弱点をもとに、はじめての敵では、敵の属性の反対〈無属性の敵には雷〉が弱点だと考えて）。目安であり、実際の生徒の遊び方とはちがう。</p></div>`;
   }
   function textPanel(k) {
     const saved = CT.texts[k];
